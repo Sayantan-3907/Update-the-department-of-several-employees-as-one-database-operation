@@ -6,9 +6,13 @@ import java.awt.*;
 import java.sql.*;
 
 public class Main {
-    static final String DB_URL = "jdbc:oracle:thin:@//127.0.0.1:1521/XE";
+    static final String DB_URL =
+    System.getenv().getOrDefault(
+        "ORACLE_DB_URL",
+        "jdbc:oracle:thin:@//localhost:1521/XE"
+    );
     static final String DB_USER = "system";
-    static final String DB_PASS = "admin123";
+    static final String DB_PASS = "hsmCvdijpu1@";
 
     public static void main(String[] args) {
         try {
