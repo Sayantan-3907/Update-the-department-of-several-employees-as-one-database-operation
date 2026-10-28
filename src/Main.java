@@ -1,116 +1,102 @@
-
-
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.sql.*;
 
 public class Main {
-    static final String DB_URL =
-    System.getenv().getOrDefault(
-        "ORACLE_DB_URL",
-        "jdbc:oracle:thin:@//localhost:1521/XE"
-    );
-    static final String DB_USER = "system";
-    static final String DB_PASS = "hsmCvdijpu1@";
+    static final String DB_URL  = "jdbc:mysql://localhost:3306/employee";
+    static final String DB_USER = "root";
+    static final String DB_PASS = "sayantan@123";
 
     public static void main(String[] args) {
-        try {
-            Class.forName("oracle.jdbc.OracleDriver");
-        } catch (ClassNotFoundException e) {
-            System.out.println("Oracle JDBC Driver not found!");
-        }
+
+        initializeDatabase();
 
         SwingUtilities.invokeLater(() -> {
-            JFrame frame = new JFrame("Employee Department Transaction Manager - RA2511003010796");
-            frame.setSize(650, 450);
+
+            JFrame frame = new JFrame("Employee Department Manager");
+            frame.setSize(600, 420);
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            frame.setLayout(new BorderLayout());
+            frame.setLayout(new BorderLayout(5, 5));
 
             JPanel inputPanel = new JPanel(new GridLayout(3, 2, 5, 5));
-            inputPanel.setBorder(BorderFactory.createTitledBorder("Transaction Parameters"));
+            inputPanel.setBorder(BorderFactory.createTitledBorder("Department Transfer"));
 
             JTextField txtOldDept = new JTextField("IT");
             JTextField txtNewDept = new JTextField("HR");
 
-            inputPanel.add(new JLabel("Current Department (to select):"));
+            inputPanel.add(new JLabel("From Department:"));
             inputPanel.add(txtOldDept);
-            inputPanel.add(new JLabel("New Department (to update to):"));
+            inputPanel.add(new JLabel("To Department:"));
             inputPanel.add(txtNewDept);
 
-            JButton btnLoad = new JButton("1. Load Employees");
+            JButton btnLoad    = new JButton("Load Employees");
+            JButton btnExecute = new JButton("Update Department");
             inputPanel.add(btnLoad);
-            
-            JButton btnExecuteTx = new JButton("2. Execute Transaction (Update & Commit/Rollback)");
-            inputPanel.add(btnExecuteTx);
+            inputPanel.add(btnExecute);
 
             frame.add(inputPanel, BorderLayout.NORTH);
 
-            String[] columns = {"ID", "Name", "Department"};
-            DefaultTableModel tableModel = new DefaultTableModel(columns, 0);
-            JTable table = new JTable(tableModel);
-            frame.add(new JScrollPane(table), BorderLayout.CENTER);
-
-            initializeDatabase();
+            DefaultTableModel model = new DefaultTableModel(
+                    new String[]{"ID", "Name", "Department"}, 0);
+            frame.add(new JScrollPane(new JTable(model)), BorderLayout.CENTER);
 
             btnLoad.addActionListener(e -> {
-                tableModel.setRowCount(0);
-                String oldDept = txtOldDept.getText().trim();
-                String sql = "SELECT id, name, department FROM employees WHERE department = ?";
+                model.setRowCount(0);
+                String dept = txtOldDept.getText().trim();
 
                 try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-                     PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                    
-                    pstmt.setString(1, oldDept);
-                    ResultSet rs = pstmt.executeQuery();
+                     PreparedStatement ps = conn.prepareStatement(
+                             "SELECT id, name, department FROM employees WHERE department = ?")) {
+
+                    ps.setString(1, dept);
+                    ResultSet rs = ps.executeQuery();
 
                     while (rs.next()) {
-                        tableModel.addRow(new Object[]{
+                        model.addRow(new Object[]{
                             rs.getInt("id"),
                             rs.getString("name"),
                             rs.getString("department")
                         });
                     }
+
+                    if (model.getRowCount() == 0)
+                        JOptionPane.showMessageDialog(frame, "No employees found in '" + dept + "'.");
+
                 } catch (SQLException ex) {
-                    JOptionPane.showMessageDialog(frame, "Load Error: " + ex.getMessage());
+                    JOptionPane.showMessageDialog(frame, "Load error: " + ex.getMessage());
                 }
             });
-
-            btnExecuteTx.addActionListener(e -> {
+            btnExecute.addActionListener(e -> {
                 String oldDept = txtOldDept.getText().trim();
                 String newDept = txtNewDept.getText().trim();
 
-                Connection conn = null;
-                try {
-                    conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
-                    conn.setAutoCommit(false);
+                try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
+                    conn.setAutoCommit(false);   
 
-                    String updateSql = "UPDATE employees SET department = ? WHERE department = ?";
-                    try (PreparedStatement pstmt = conn.prepareStatement(updateSql)) {
-                        pstmt.setString(1, newDept);
-                        pstmt.setString(2, oldDept);
-                        
-                        int rowsUpdated = pstmt.executeUpdate();
+                    try (PreparedStatement ps = conn.prepareStatement(
+                            "UPDATE employees SET department = ? WHERE department = ?")) {
 
-                        if (rowsUpdated == 0) {
-                            throw new SQLException("No employees found in department '" + oldDept + "' to update!");
-                        }
+                        ps.setString(1, newDept);
+                        ps.setString(2, oldDept);
+                        int rows = ps.executeUpdate();
 
-                        conn.commit();
-                        JOptionPane.showMessageDialog(frame, "Transaction Successful! " + rowsUpdated + " employee(s) updated and committed.");
-                        btnLoad.doClick();
+                        if (rows == 0)
+                            throw new SQLException("No employees found in '" + oldDept + "'.");
 
-                    } catch (SQLException innerEx) {
-                        if (conn != null) { conn.rollback(); }
-                        JOptionPane.showMessageDialog(frame, "Transaction Failed! Changes rolled back.\nReason: " + innerEx.getMessage());
+                        conn.commit();  
+                        JOptionPane.showMessageDialog(frame,
+                                rows + " employee(s) moved from '" + oldDept + "' → '" + newDept + "'.");
+                        btnLoad.doClick(); 
+
+                    } catch (SQLException ex) {
+                        conn.rollback(); 
+                        JOptionPane.showMessageDialog(frame,
+                                "Transaction rolled back.\nReason: " + ex.getMessage());
                     }
 
                 } catch (SQLException ex) {
-                    JOptionPane.showMessageDialog(frame, "Database Connection Error: " + ex.getMessage());
-                } finally {
-                    if (conn != null) {
-                        try { conn.close(); } catch (SQLException ignored) {}
-                    }
+                    JOptionPane.showMessageDialog(frame, "Connection error: " + ex.getMessage());
                 }
             });
 
@@ -121,13 +107,24 @@ public class Main {
     private static void initializeDatabase() {
         try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
              Statement stmt = conn.createStatement()) {
-            try {
-                stmt.executeUpdate("CREATE TABLE employees (id NUMBER PRIMARY KEY, name VARCHAR2(50), department VARCHAR2(50))");
-                stmt.executeUpdate("INSERT INTO employees VALUES (1, 'Sayantan', 'IT')");
-                stmt.executeUpdate("INSERT INTO employees VALUES (2, 'Rahul', 'IT')");
-                stmt.executeUpdate("INSERT INTO employees VALUES (3, 'Ananya', 'HR')");
-                conn.commit();
-            } catch (SQLException ignored) {}
-        } catch (SQLException ignored) {}
+
+            stmt.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS employees (" +
+                "  id         INT PRIMARY KEY AUTO_INCREMENT," +
+                "  name       VARCHAR(50)," +
+                "  department VARCHAR(50)" +
+                ")"
+            );
+            ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM employees");
+            rs.next();
+            if (rs.getInt(1) == 0) {
+                stmt.executeUpdate("INSERT INTO employees (name, department) VALUES ('Sayantan', 'IT')");
+                stmt.executeUpdate("INSERT INTO employees (name, department) VALUES ('tuya',    'IT')");
+                stmt.executeUpdate("INSERT INTO employees (name, department) VALUES ('kuntal',   'HR')");
+            }
+
+        } catch (SQLException ex) {
+            System.err.println("DB init error: " + ex.getMessage());
+        }
     }
 }

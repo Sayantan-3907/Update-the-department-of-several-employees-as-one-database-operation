@@ -1,0 +1,6 @@
+# Compiled class files
+*.class
+out/
+
+# JAR files (too large for git)
+lib/mysql-connector-j-8.3.0.jar
